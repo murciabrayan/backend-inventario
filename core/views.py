@@ -15,6 +15,7 @@ from .models import Category, InventoryMovement, Product, User
 from .permissions import IsAdminOrReadOnly, IsAdminRole
 from .serializers import (
     CategorySerializer,
+    CurrentUserUpdateSerializer,
     DashboardSummarySerializer,
     LoginSerializer,
     MovementSerializer,
@@ -34,6 +35,16 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = CurrentUserUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(UserSerializer(request.user).data)
 
 

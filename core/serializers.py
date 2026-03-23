@@ -13,16 +13,75 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, min_length=8)
+
     class Meta:
         model = User
-        fields = ["role", "is_active"]
+        fields = ["name", "email", "password", "role", "is_active"]
+
+    def validate_email(self, value):
+        user = self.instance
+        if User.objects.exclude(pk=user.pk).filter(email=value).exists():
+            raise serializers.ValidationError("Ya existe un usuario con este correo.")
+        return value
 
     def update(self, instance, validated_data):
+        password = validated_data.pop("password", "")
         role = validated_data.get("role")
         if role is not None:
             instance.is_staff = role == User.Roles.ADMIN
 
-        return super().update(instance, validated_data)
+        instance = super().update(instance, validated_data)
+
+        if password:
+            instance.set_password(password)
+            instance.save(update_fields=["password"])
+
+        return instance
+
+
+class CurrentUserUpdateSerializer(serializers.ModelSerializer):
+    current_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    new_password = serializers.CharField(write_only=True, required=False, allow_blank=True, min_length=8)
+
+    class Meta:
+        model = User
+        fields = ["name", "email", "current_password", "new_password"]
+
+    def validate_email(self, value):
+        user = self.instance
+        if User.objects.exclude(pk=user.pk).filter(email=value).exists():
+            raise serializers.ValidationError("Ya existe un usuario con este correo.")
+        return value
+
+    def validate(self, attrs):
+        current_password = attrs.get("current_password", "")
+        new_password = attrs.get("new_password", "")
+
+        if new_password and not current_password:
+            raise serializers.ValidationError(
+                {"current_password": "Debes ingresar tu contrasena actual para cambiarla."}
+            )
+
+        if current_password and not self.instance.check_password(current_password):
+            raise serializers.ValidationError(
+                {"current_password": "La contrasena actual no es correcta."}
+            )
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        validated_data.pop("current_password", None)
+        new_password = validated_data.pop("new_password", "")
+
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        if new_password:
+            instance.set_password(new_password)
+
+        instance.save()
+        return instance
 
 
 class CategorySerializer(serializers.ModelSerializer):
